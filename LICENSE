@@ -1,0 +1,103 @@
+CometAPI Non-Commercial License
+Version 1.0
+
+Copyright (c) 2026 那颗星星188
+
+This license applies to the ComfyUI-CometAPI project and all files distributed
+with this repository, unless a specific file clearly states otherwise.
+
+1. Definitions
+
+"Software" means the ComfyUI-CometAPI plugin, including source code, bundled
+frontend files, documentation, examples, and related materials in this
+repository.
+
+"Author" means Bilibili creator "那颗星星188", the copyright holder of this
+Software.
+
+"Non-Commercial Use" means use by an individual for personal learning, personal
+research, hobby projects, or non-profit experimentation; use by universities or
+academic research institutions for teaching or non-commercial research; and use
+by non-profit organizations for non-commercial purposes.
+
+"Commercial Use" means any use by a company or other for-profit organization,
+any use in company internal business, production, operation, delivery, training,
+service, workflow, or project work, any use for paid services, consulting,
+outsourcing, SaaS, products, plugins, bundles, courses, paid communities, paid
+models, paid nodes, commercial content production, customer delivery, or any use
+that directly or indirectly generates revenue, business value, or commercial
+advantage.
+
+2. Free Permission for Non-Commercial Use
+
+Subject to this license, the Author grants you a free, non-exclusive,
+non-transferable, revocable permission to download, install, run, study, modify,
+and share the Software only for Non-Commercial Use.
+
+You may redistribute the Software for Non-Commercial Use only if:
+
+- you keep this LICENSE file and all copyright notices intact;
+- you clearly identify the project name "ComfyUI-CometAPI";
+- you do not remove or hide the Author attribution;
+- you do not imply that you are the original author;
+- you do not charge money or other consideration for the Software itself or for
+  access to the Software; and
+- you distribute modified versions under terms no less restrictive than this
+  license.
+
+3. Commercial Use Requires a Separate Commercial License
+
+Commercial Use is not permitted under this free license.
+
+If you are a company, use this Software inside a company, use it for business
+work, integrate it into a paid product or paid service, sell it, resell it,
+bundle it with paid resources, use it for customer delivery, or otherwise use it
+for commercial purposes, you must contact the Author and obtain a separate
+written commercial license before using the Software.
+
+Without a separate written commercial license from the Author, you may not:
+
+- use the Software in any company or for-profit organization;
+- use the Software for internal business operations or production workflows;
+- sell, rent, lease, sublicense, or provide paid access to the Software;
+- package the Software into a paid product, paid node pack, paid workflow pack,
+  paid course, paid community resource, or commercial service;
+- provide commercial support, deployment, integration, or customization services
+  based on the Software;
+- remove, change, or obscure this license or the Author attribution; or
+- claim exclusive rights over the Software or any modified version of it.
+
+4. Private Channel Files and Third-Party Services
+
+This Software may support third-party API providers or user-created private
+channel adapters. API keys, provider accounts, paid API usage, private channel
+files, and third-party service terms are the user's responsibility.
+
+This license does not grant any rights to third-party services, models, APIs,
+brands, or content. You must comply with the terms of any API provider or model
+provider you use.
+
+5. No Warranty
+
+The Software is provided "AS IS", without warranty of any kind, express or
+implied, including but not limited to warranties of merchantability, fitness for
+a particular purpose, non-infringement, availability, correctness, security, or
+compatibility.
+
+You use the Software at your own risk. The Author is not responsible for any
+loss, damage, data loss, account issue, API cost, business interruption, security
+problem, or other consequence arising from the use or inability to use the
+Software.
+
+6. Termination
+
+If you violate this license, your permission to use the Software terminates
+automatically. After termination, you must stop using the Software and delete all
+copies under your control unless you have obtained a separate written commercial
+license from the Author.
+
+7. Commercial License Contact
+
+For commercial licensing, please contact the Author through Bilibili
+"那颗星星188" or through the GitHub repository issue page.
+
