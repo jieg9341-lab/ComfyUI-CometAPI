@@ -1,0 +1,21 @@
+[project]
+name = "comet-api"
+version = "1.0.0"
+description = "A multimodal API workflow toolkit for ComfyUI with image, video, audio, text, batch generation, asset cards, and an integrated chat assistant."
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "requests",
+    "aiohttp",
+]
+classifiers = [
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Repository = "https://github.com/jieg9341-lab/ComfyUI-CometAPI"
+"Bug Tracker" = "https://github.com/jieg9341-lab/ComfyUI-CometAPI/issues"
+
+[tool.comfy]
+PublisherId = "jieg9341-lab"
+DisplayName = "CometAPI"
