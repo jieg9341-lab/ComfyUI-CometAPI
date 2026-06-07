@@ -93,6 +93,8 @@ SUPPORTED_ASPECT_RATIOS = [
     "4:1",
     "8:1",
 ]
+IMAGE_REASONING_EFFORT_VALUES = ["low", "medium", "high", "xhigh"]
+IMAGE_BACKGROUND_MODE_VALUES = ["默认", "透明"]
 LLM_CHANNELS = ["grsai", "apimart", "runninghub", "modelverse"]
 IMAGE_CHANNELS = ["grsai", "runninghub", "modelverse", "apimart"]
 VIDEO_CHANNELS = ["apimart", "runninghub", "modelverse"]
@@ -1664,6 +1666,11 @@ def get_llm_channel_choices() -> list[str]:
 
 def get_image_channel_choices() -> list[str]:
     choices = list(IMAGE_CHANNELS)
+    private_channels = [
+        spec["id"]
+        for spec in load_private_channel_specs()
+        if any(item.get("category") == "image" for item in spec.get("models") or [])
+    ]
     try:
         settings = load_comet_settings()
         for channel, channel_settings in (settings.get("channels") or {}).items():
@@ -1674,7 +1681,7 @@ def get_image_channel_choices() -> list[str]:
                 choices.append(str(channel.get("id") or ""))
     except Exception:
         pass
-    return _unique_non_empty(choices)
+    return _unique_non_empty(choices + private_channels)
 
 
 def get_llm_model_choices() -> list[str]:
@@ -1700,6 +1707,12 @@ def get_llm_model_choices() -> list[str]:
 
 def get_image_model_choices() -> list[str]:
     models = list(SUPPORTED_MODELS)
+    models.extend(
+        str(item.get("model"))
+        for spec in load_private_channel_specs()
+        for item in (spec.get("models") or [])
+        if item.get("category") == "image" and item.get("model")
+    )
     try:
         settings = load_comet_settings()
         for channel_settings in settings.get("channels", {}).values():
@@ -2320,6 +2333,20 @@ def safe_pil_to_rgb(image: Image.Image) -> Image.Image:
     return image
 
 
+def pil_image_has_alpha(image: Image.Image) -> bool:
+    if not isinstance(image, Image.Image):
+        return False
+    if "A" in image.getbands():
+        return True
+    return image.mode == "P" and "transparency" in image.info
+
+
+def safe_pil_for_tensor(image: Image.Image, preserve_alpha: bool = True) -> Image.Image:
+    if preserve_alpha and pil_image_has_alpha(image):
+        return image.convert("RGBA")
+    return safe_pil_to_rgb(image)
+
+
 def tensor_to_pil(tensor: torch.Tensor) -> list[Image.Image]:
     if not isinstance(tensor, torch.Tensor):
         return []
@@ -2336,13 +2363,14 @@ def tensor_to_pil(tensor: torch.Tensor) -> list[Image.Image]:
     return images
 
 
-def pil_to_tensor(pil_images: Image.Image | list[Image.Image]) -> torch.Tensor:
+def pil_to_tensor(pil_images: Image.Image | list[Image.Image], preserve_alpha: bool = True) -> torch.Tensor:
     if not isinstance(pil_images, list):
         pil_images = [pil_images]
 
+    use_alpha = preserve_alpha and any(pil_image_has_alpha(image) for image in pil_images)
     tensors = []
     for pil_image in pil_images:
-        pil_image = safe_pil_to_rgb(pil_image)
+        pil_image = pil_image.convert("RGBA") if use_alpha else safe_pil_to_rgb(pil_image)
         arr = np.array(pil_image).astype(np.float32) / 255.0
         tensors.append(torch.from_numpy(arr)[None,])
 
@@ -2360,11 +2388,11 @@ def get_folder_paths():
         raise RuntimeError(f"cannot import ComfyUI folder_paths: {exc}") from exc
 
 
-def tensor_first_to_pil(image: torch.Tensor) -> Image.Image:
+def tensor_first_to_pil(image: torch.Tensor, preserve_alpha: bool = True) -> Image.Image:
     pil_images = tensor_to_pil(image)
     if not pil_images:
         raise ValueError("输入图片为空。")
-    return safe_pil_to_rgb(pil_images[0])
+    return safe_pil_for_tensor(pil_images[0], preserve_alpha=preserve_alpha)
 
 
 def _strip_wrapping_path_quotes(value: str) -> str:
@@ -2693,7 +2721,7 @@ def save_asset_image(image: torch.Tensor, prefix: str = "CometAPIImageCard") -> 
     target_dir, safe_prefix, subfolder, absolute_dir = _resolve_asset_output_target(prefix, "CometAPIImageCard", ".png")
     os.makedirs(target_dir, exist_ok=True)
 
-    pil_image = tensor_first_to_pil(image)
+    pil_image = tensor_first_to_pil(image, preserve_alpha=True)
     filename = f"{safe_prefix}_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.png"
     pil_image.save(os.path.join(target_dir, filename), "PNG")
     return _make_asset_ref(filename, subfolder, absolute_dir), pil_image
@@ -2707,18 +2735,19 @@ def save_asset_images(image: torch.Tensor, prefix: str = "CometAPIImageCard") ->
     saved_refs = []
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     for index, pil_image in enumerate(pil_images, start=1):
-        pil_image = safe_pil_to_rgb(pil_image)
+        pil_image = safe_pil_for_tensor(pil_image, preserve_alpha=True)
         filename = f"{safe_prefix}_{timestamp}_{index:02d}_{uuid.uuid4().hex[:8]}.png"
         pil_image.save(os.path.join(target_dir, filename), "PNG")
         saved_refs.append(_make_asset_ref(filename, subfolder, absolute_dir))
     return saved_refs, pil_images
 
 
-def load_asset_image(asset_ref: dict) -> Image.Image:
+def load_asset_image(asset_ref: dict, preserve_alpha: bool = True) -> Image.Image:
     path = asset_abs_path(asset_ref)
     if not os.path.exists(path):
         raise FileNotFoundError(path)
-    return safe_pil_to_rgb(Image.open(path))
+    with Image.open(path) as image:
+        return safe_pil_for_tensor(image.copy(), preserve_alpha=preserve_alpha)
 
 
 IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 300
@@ -8928,6 +8957,8 @@ class CometAPIUnifiedImage:
                 "aspect_ratio": (SUPPORTED_ASPECT_RATIOS, {"default": "auto"}),
                 "image_size": (["1K", "2K", "3K", "4K", "8K"], {"default": "2K"}),
                 "quality": (GPT_IMAGE_QUALITY_VALUES, {"default": "medium"}),
+                "reasoning_effort": (IMAGE_REASONING_EFFORT_VALUES, {"default": "medium"}),
+                "background_mode": (IMAGE_BACKGROUND_MODE_VALUES, {"default": "默认"}),
             },
             "optional": {
                 "images": ("IMAGE",),
@@ -9012,6 +9043,8 @@ class CometAPIUnifiedImage:
         aspect_ratio: str,
         image_size: str,
         quality: str = "medium",
+        reasoning_effort: str = "medium",
+        background_mode: str = "默认",
         api_key: str = "",
         **kwargs,
     ):
@@ -9099,6 +9132,8 @@ class CometAPIUnifiedImage:
                             aspect_ratio=aspect_ratio,
                             image_size=target_size,
                             quality=quality,
+                            reasoning_effort=reasoning_effort,
+                            background_mode=background_mode,
                             subtask_idx=_,
                         )
                     if channel == "runninghub":
@@ -9208,11 +9243,16 @@ class CometAPIUnifiedImage:
             return self._error(format_error_message(exc))
 
 
-def _batch_image_tensor(pil_images: list[Image.Image]) -> torch.Tensor:
+def _batch_image_tensor(pil_images: list[Image.Image], preserve_alpha: bool = True) -> torch.Tensor:
     if not pil_images:
         return torch.zeros((1, 1, 1, 3), dtype=torch.float32)
 
-    safe_images = [safe_pil_to_rgb(image) for image in pil_images if isinstance(image, Image.Image)]
+    use_alpha = preserve_alpha and any(pil_image_has_alpha(image) for image in pil_images if isinstance(image, Image.Image))
+    safe_images = [
+        image.convert("RGBA") if use_alpha else safe_pil_to_rgb(image)
+        for image in pil_images
+        if isinstance(image, Image.Image)
+    ]
     if not safe_images:
         return torch.zeros((1, 1, 1, 3), dtype=torch.float32)
 
@@ -9223,10 +9263,14 @@ def _batch_image_tensor(pil_images: list[Image.Image]) -> torch.Tensor:
         if image.width == max_width and image.height == max_height:
             padded.append(image)
             continue
-        canvas = Image.new("RGB", (max_width, max_height), (0, 0, 0))
-        canvas.paste(image, ((max_width - image.width) // 2, (max_height - image.height) // 2))
+        canvas = Image.new("RGBA" if use_alpha else "RGB", (max_width, max_height), (0, 0, 0, 0) if use_alpha else (0, 0, 0))
+        offset = ((max_width - image.width) // 2, (max_height - image.height) // 2)
+        if use_alpha:
+            canvas.alpha_composite(image.convert("RGBA"), offset)
+        else:
+            canvas.paste(image, offset)
         padded.append(canvas)
-    return pil_to_tensor(padded)
+    return pil_to_tensor(padded, preserve_alpha=use_alpha)
 
 
 def _batch_image_slug(value: str, fallback: str = "item") -> str:
@@ -9258,6 +9302,8 @@ class CometAPIBatchImage:
                 "aspect_ratio": (SUPPORTED_ASPECT_RATIOS, {"default": "auto"}),
                 "image_size": (["1K", "2K", "3K", "4K", "8K"], {"default": "2K"}),
                 "quality": (GPT_IMAGE_QUALITY_VALUES, {"default": "medium"}),
+                "reasoning_effort": (IMAGE_REASONING_EFFORT_VALUES, {"default": "medium"}),
+                "background_mode": (IMAGE_BACKGROUND_MODE_VALUES, {"default": "默认"}),
             },
             "optional": {
                 "images": ("IMAGE",),
@@ -9710,6 +9756,8 @@ class CometAPIBatchImage:
         aspect_ratio: str,
         image_size: str,
         quality: str,
+        reasoning_effort: str,
+        background_mode: str,
         upload_cache: dict,
         upload_lock: threading.Lock,
         include_grsai_error_detail: bool = False,
@@ -9768,6 +9816,8 @@ class CometAPIBatchImage:
                         aspect_ratio=aspect_ratio,
                         image_size=target_size,
                         quality=quality,
+                        reasoning_effort=reasoning_effort,
+                        background_mode=background_mode,
                         subtask_idx=subtask_idx,
                     )
                     return images, errors, refs
@@ -9839,6 +9889,8 @@ class CometAPIBatchImage:
         aspect_ratio: str,
         image_size: str,
         quality: str = "medium",
+        reasoning_effort: str = "medium",
+        background_mode: str = "默认",
         api_key: str = "",
         batch_text=None,
         **kwargs,
@@ -9911,6 +9963,8 @@ class CometAPIBatchImage:
                     aspect_ratio,
                     image_size,
                     quality,
+                    reasoning_effort,
+                    background_mode,
                     upload_cache,
                     upload_lock,
                     include_grsai_error_detail=is_grsai_multi_to_one,
@@ -9979,7 +10033,7 @@ class CometAPIBatchImage:
                                     pending.cancel()
                                 continue
                     for result_index, pil_image in enumerate(images, start=1):
-                        safe_image = safe_pil_to_rgb(pil_image)
+                        safe_image = safe_pil_for_tensor(pil_image, preserve_alpha=True)
                         prompt_part = f"p{int(task.get('prompt_index') or 0):03d}"
                         source_part = f"s{int(task.get('source_index') or 0):03d}" if task.get("source_index") else "fixed"
                         candidate_part = f"c{int(task.get('candidate_index') or 1):02d}"
@@ -10982,6 +11036,8 @@ def _private_context(
     aspect_ratio: str = "",
     image_size: str = "",
     quality: str = "",
+    reasoning_effort: str = "",
+    background_mode: str = "",
     concurrency: int = 1,
     duration: str = "",
     size: str = "",
@@ -11008,6 +11064,8 @@ def _private_context(
         "aspect_ratio": aspect_ratio,
         "image_size": image_size,
         "quality": quality,
+        "reasoning_effort": reasoning_effort,
+        "background_mode": background_mode,
         "concurrency": concurrency,
         "duration": str(duration),
         "size": str(size),
@@ -11084,6 +11142,8 @@ def run_private_image_channel(
     aspect_ratio: str,
     image_size: str,
     quality: str,
+    reasoning_effort: str = "",
+    background_mode: str = "",
     subtask_idx: int = 0,
 ) -> tuple[list[Image.Image], list[str]]:
     spec = get_private_channel_spec(channel)
@@ -11119,6 +11179,8 @@ def run_private_image_channel(
         aspect_ratio=aspect_ratio,
         image_size=image_size,
         quality=quality,
+        reasoning_effort=reasoning_effort,
+        background_mode=background_mode,
         concurrency=1,
         duration="",
         resolution="",
@@ -11658,7 +11720,7 @@ def _local_async_image_paths(task_id: str, local_id: str, images: list[Image.Ima
     for index, image in enumerate(images, start=1):
         filename = f"{safe_task}_{local_id}_{index:02d}.png"
         path = os.path.abspath(os.path.join(target_dir, filename))
-        safe_pil_to_rgb(image).save(path, "PNG")
+        safe_pil_for_tensor(image, preserve_alpha=True).save(path, "PNG")
         paths.append(path)
     return paths
 
@@ -11755,6 +11817,8 @@ def _run_local_wrapped_image_subtask(task_id: str, local_id: str, payload: dict)
             aspect_ratio=str(payload.get("aspect_ratio") or "auto"),
             image_size=str(payload.get("image_size") or "2K"),
             quality=str(payload.get("quality") or "medium"),
+            reasoning_effort=str(payload.get("reasoning_effort") or "medium"),
+            background_mode=str(payload.get("background_mode") or "默认"),
             upload_cache=payload.get("upload_cache") if isinstance(payload.get("upload_cache"), dict) else {},
             upload_lock=upload_lock,
         )
@@ -12010,6 +12074,8 @@ def submit_async_image_subtask(
     aspect_ratio: str,
     image_size: str,
     quality: str,
+    reasoning_effort: str = "medium",
+    background_mode: str = "默认",
     subtask_idx: int = 0,
     grsai_upload_cache: dict | None = None,
     grsai_upload_lock: threading.Lock | None = None,
@@ -12117,6 +12183,8 @@ def submit_async_image_subtask(
                 aspect_ratio=aspect_ratio,
                 image_size=image_size,
                 quality=quality,
+                reasoning_effort=reasoning_effort,
+                background_mode=background_mode,
             )
             context["subtask_idx"] = subtask_idx
             result = submit(context)
@@ -12533,7 +12601,20 @@ class CometAPIAsyncImage(CometAPIUnifiedImage):
             ui["comet_error"] = [message]
         return {"ui": ui, "result": (message,)}
 
-    def submit(self, channel: str, model: str, prompt: str, concurrency: int, aspect_ratio: str, image_size: str, quality: str = "medium", api_key: str = "", **kwargs):
+    def submit(
+        self,
+        channel: str,
+        model: str,
+        prompt: str,
+        concurrency: int,
+        aspect_ratio: str,
+        image_size: str,
+        quality: str = "medium",
+        reasoning_effort: str = "medium",
+        background_mode: str = "默认",
+        api_key: str = "",
+        **kwargs,
+    ):
         channel = str(channel or "").lower()
         if channel not in get_image_channel_choices():
             return self._text_result(f"不支持的渠道：{channel}", True)
@@ -12573,6 +12654,8 @@ class CometAPIAsyncImage(CometAPIUnifiedImage):
                         aspect_ratio=aspect_ratio,
                         image_size=image_size,
                         quality=quality,
+                        reasoning_effort=reasoning_effort,
+                        background_mode=background_mode,
                         subtask_idx=index,
                         grsai_upload_cache=upload_cache,
                         grsai_upload_lock=upload_lock,
@@ -12602,6 +12685,8 @@ class CometAPIAsyncImage(CometAPIUnifiedImage):
                                 "aspect_ratio": aspect_ratio,
                                 "image_size": image_size,
                                 "quality": quality,
+                                "reasoning_effort": reasoning_effort,
+                                "background_mode": background_mode,
                                 "upload_cache": upload_cache,
                                 "upload_lock": upload_lock,
                             },
@@ -12660,6 +12745,8 @@ class CometAPIAsyncBatchImage(CometAPIBatchImage):
         aspect_ratio: str,
         image_size: str,
         quality: str = "medium",
+        reasoning_effort: str = "medium",
+        background_mode: str = "默认",
         api_key: str = "",
         batch_text=None,
         **kwargs,
@@ -12733,6 +12820,8 @@ class CometAPIAsyncBatchImage(CometAPIBatchImage):
                                 "aspect_ratio": aspect_ratio,
                                 "image_size": image_size,
                                 "quality": quality,
+                                "reasoning_effort": reasoning_effort,
+                                "background_mode": background_mode,
                                 "upload_cache": upload_cache,
                                 "upload_lock": upload_lock,
                             },
@@ -12774,6 +12863,8 @@ class CometAPIAsyncBatchImage(CometAPIBatchImage):
                     aspect_ratio=aspect_ratio,
                     image_size=image_size,
                     quality=quality,
+                    reasoning_effort=reasoning_effort,
+                    background_mode=background_mode,
                     subtask_idx=index,
                     grsai_upload_cache=upload_cache,
                     grsai_upload_lock=upload_lock,
@@ -13022,7 +13113,7 @@ class CometAPIAsyncImageReceiver:
                     errors.append(f"本地缓存图片不存在：{path}")
                     continue
                 with Image.open(path) as image:
-                    pil_images.append(safe_pil_to_rgb(image.copy()))
+                    pil_images.append(safe_pil_for_tensor(image.copy(), preserve_alpha=True))
             except Exception as exc:
                 errors.append(f"读取本地缓存图片失败：{path}: {format_error_message(exc)}")
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(12, len(urls)))) as executor:
@@ -13032,7 +13123,7 @@ class CometAPIAsyncImageReceiver:
                 try:
                     image = future.result()
                     if image:
-                        pil_images.append(safe_pil_to_rgb(image))
+                        pil_images.append(safe_pil_for_tensor(image, preserve_alpha=True))
                     else:
                         errors.append(f"图片下载失败：{url}")
                 except Exception as exc:
@@ -13249,7 +13340,7 @@ class CometAPIImageCard:
                 saved_refs.append(_make_asset_ref(filename, subfolder, absolute_dir))
                 # 同步加载 PIL 用于下游 image / batch_image 端口输出
                 with Image.open(dest_path) as opened:
-                    pil_images.append(safe_pil_to_rgb(opened.copy()))
+                    pil_images.append(safe_pil_for_tensor(opened.copy(), preserve_alpha=True))
             return saved_refs, pil_images
         except Exception as exc:
             print(f"[CometAPI] Image Card: 嗅探 batch 原图复制失败，退回 tensor 落盘：{redact_sensitive_text(exc)}")

@@ -1,0 +1,81 @@
+{
+  "enabled": true,
+  "id": "openrouter",
+  "name": "OpenRouter",
+  "api_url": "https://openrouter.ai/api/v1",
+  "api_key_env": "OPENROUTER_API_KEY",
+  "api_key": "",
+  "adapter": "openrouter",
+  "models": [
+    {
+      "model": "sourceful/riverflow-v2.5-pro:free",
+      "alias": "Riverflow V2.5 Pro",
+      "category": "image",
+      "family": "sourceful",
+      "runtime": {
+        "max_images": 10,
+        "request_size_limit_bytes": 4500000
+      },
+      "ui": {
+        "fields": {
+          "aspect_ratio": {
+            "values": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+            "default": "auto"
+          },
+          "image_size": {
+            "values": ["1K", "2K", "4K"],
+            "default": "1K"
+          },
+          "reasoning_effort": {
+            "values": ["low", "medium", "high", "xhigh"],
+            "default": "medium"
+          },
+          "background_mode": {
+            "values": ["默认", "透明"],
+            "default": "默认"
+          }
+        },
+        "media_limits": {
+          "image": 10,
+          "video": 0,
+          "audio": 0
+        }
+      }
+    },
+    {
+      "model": "sourceful/riverflow-v2.5-fast:free",
+      "alias": "Riverflow V2.5 Fast",
+      "category": "image",
+      "family": "sourceful",
+      "runtime": {
+        "max_images": 4,
+        "request_size_limit_bytes": 4500000
+      },
+      "ui": {
+        "fields": {
+          "aspect_ratio": {
+            "values": ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+            "default": "auto"
+          },
+          "image_size": {
+            "values": ["1K", "2K"],
+            "default": "1K"
+          },
+          "reasoning_effort": {
+            "values": ["low", "medium", "high"],
+            "default": "medium"
+          },
+          "background_mode": {
+            "values": ["默认", "透明"],
+            "default": "默认"
+          }
+        },
+        "media_limits": {
+          "image": 4,
+          "video": 0,
+          "audio": 0
+        }
+      }
+    }
+  ]
+}
